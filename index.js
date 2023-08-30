@@ -3,9 +3,9 @@ import * as fs from 'fs'
 
 //----------------------------------------//
 const config = {
-    email: 'pw.piotr.wyrwas@gmail.com',
-    password: 'piotr2005',
-    ebookId: '5357'
+    email: '',
+    password: '',
+    ebookId: ''
 }
 //----------------------------------------//
 
@@ -40,6 +40,8 @@ async function gotoPage(name) {
         xpath = '//*[@id="btnFirst"]'
     } else if (name === 'last') {
         xpath = '//*[@id="btnLast"]'
+    } else if (name === 'next') {
+        xpath = '//*[@id="btnNext"]'
     } else {
         console.log(`Unknown page name: ${name}`)
         await exit()
@@ -47,16 +49,34 @@ async function gotoPage(name) {
 
     const lastPageBtn = await page.$x(xpath)
 
-    if (!lastPageBtn) {
+    if (lastPageBtn.length === 0) {
         console.log('The ebook viewer has a flawed design.')
         await exit()
     }
 
-    await lastPageBtn[0].evaluate((element) => {
+    const promise = page.waitForNavigation()
+    lastPageBtn[0].evaluate((element) => {
         element.dispatchEvent(new MouseEvent('click', {}))
     })
 
-    await page.waitForNavigation()
+    await promise
+}
+
+async function findSVGUrl() {
+    await page.waitForXPath('/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/object', {
+        timeout: 5000
+    })
+
+    const svg = await page.$x('/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/object')
+
+    if (svg.length === 0) {
+        console.log('Cannot find SVG container.')
+        await exit()
+    }
+
+    return `${ebookUrl}/` + await svg[0].evaluate((domElement) => {
+        return domElement.getAttribute('data')
+    })
 }
 
 const inst = await puppeteer.launch({
@@ -102,6 +122,9 @@ await page.goto(ebookUrl, {
     waitUntil: 'domcontentloaded'
 })
 
+// Get the base url, without any additional tags
+const baseUrl = page.url()
+
 // Probe the number of pages
 await gotoPage('last')
 
@@ -109,29 +132,26 @@ await gotoPage('last')
 const lastPageUrl = page.url()
 const lastPageNumber = /\?page=([0-9]+)/.exec(lastPageUrl)
 
-if (lastPageNumber.length !== 2) {
+if (!lastPageNumber || lastPageNumber.length !== 2) {
     console.log('Could not analyze URL.')
     await exit()
 }
 
 let numberOfPages = Number.parseInt(lastPageNumber[1])
 
-console.log(`Number of pages: ${numberOfPages}`)
+console.log(`Probed number of pages: ${numberOfPages}`)
 
 await gotoPage('first')
-
-while (true) {
-}
 
 // Preallocate two tabs for getting SVGs and image files
 const svgPage = await inst.newPage()
 const imagePage = await inst.newPage()
 
 let svg = null
-let i = 1
 
-while (true) {
-    const svgUrl = `${ebookUrl}/${i}.svg`
+for (let i = 1; i < numberOfPages; i++) {
+    const svgUrl = await findSVGUrl()
+
     const res = await svgPage.goto(svgUrl)
 
     if (!res) {
@@ -144,6 +164,8 @@ while (true) {
 
     console.log(`⁕ Getting page: ${i}`)
 
+    // TODO Ge the ACTUAL URL of the images and use the href parameter to place them in the correct spot in the folder hierarchy
+
     svg = (await res.text()).replaceAll('xlink:href', 'href')
 
     const images = [...svg.matchAll(/[0-9/.a-z]+\.(jpg|png)/g)]
@@ -154,6 +176,7 @@ while (true) {
             const image = (images[j])[0]
 
             const dir = 'pages/' + image.replaceAll(/[0-9]+\.(jpg|png)/g, '')
+
             fs.mkdirSync(dir, {
                 recursive: true
             })
@@ -173,7 +196,7 @@ while (true) {
 
     writeToFile(`pages/${i}.svg`, svg)
 
-    i++
+    await gotoPage('next')
 }
 
 console.log(`Done: (${i - 1} pages converted)`)
