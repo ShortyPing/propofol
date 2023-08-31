@@ -8,6 +8,7 @@
   "author": "Piotr K. Wyrwas, Michael T. Steinmötzger",
   "license": "MIT",
   "dependencies": {
+    "dotenv": "^16.3.1",
     "puppeteer": "^21.1.1"
   }
 }

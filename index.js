@@ -1,13 +1,14 @@
+import 'dotenv/config.js'
 import * as puppeteer from 'puppeteer'
 import * as fs from 'fs'
 import * as path from "path"
 
 //----------------------------------------//
 const config = {
-    email: '',
-    password: '',
-    ebookId: "",
-    headless: true
+    email: (process.env.PROPOFOL_EMAIL),
+    password: (process.env.PROPOFOL_PASSWORD),
+    ebookId: (process.env.PROPOFOL_ID),
+    headless: (process.env.PROPOFOL_HEADLESS === 'true')
 }
 //----------------------------------------//
 
@@ -153,7 +154,7 @@ const imagePage = await inst.newPage()
 let svg = null
 let imagesCount = 0
 
-for (let i = 1; i < numberOfPages; i++) {
+for (let i = 1; i <= numberOfPages; i++) {
     const svgUrl = await findSVGUrl()
 
     const res = await svgPage.goto(svgUrl, {
@@ -169,7 +170,7 @@ for (let i = 1; i < numberOfPages; i++) {
         break
     }
 
-    console.log(`⁕ Getting page: ${i}`)
+    console.log(`⁕ Getting page: ${i} of ${numberOfPages} …`)
 
     const pageFile = `pages/${i}/page.svg`
     svg = (await res.text()).replaceAll('xlink:href', 'href')
@@ -178,7 +179,7 @@ for (let i = 1; i < numberOfPages; i++) {
 
     // Get all images referenced in the SVG
     const images = (await svgPage.$$eval('image', img => Array.from(img).map(img => img.href.baseVal)))
-        .map(href => [`pages/${i}/${href}`, `${baseUrl}${i}/${href}`])
+        .map(href => [`pages/${i}/${href}`, `${baseUrl}/${href}`])
 
     if (images.length === 0) {
         console.log('  » No associated image files.')
@@ -187,6 +188,8 @@ for (let i = 1; i < numberOfPages; i++) {
         for (let j = 0; j < images.length; j++) {
             const imageUrl = (images[j])[1]
             const imageFile = (images[j])[0]
+
+            // console.log(images[j])
 
             const resp = await imagePage.goto(imageUrl, {waitUntil: 'networkidle0', timeout: 0})
             const buffer = await resp.buffer()
