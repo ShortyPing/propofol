@@ -1,31 +1,30 @@
 import * as puppeteer from 'puppeteer'
 import * as fs from 'fs'
+import * as path from "path"
 
 //----------------------------------------//
 const config = {
     email: '',
     password: '',
-    ebookId: ''
+    ebookId: "",
+    headless: true
 }
 //----------------------------------------//
 
-fs.exists('pages', (exists) => {
-    if (!exists)
-        return
+const ebookUrl = `https://a.digi4school.at/ebook/${config.ebookId}/`
 
-    fs.rmdir('pages', {
-        recursive: true
-    }, () => {
-    })
-})
+console.log(`Ebook URL: ${ebookUrl}`)
 
-fs.mkdir('pages', () => {
-})
+function createDirectories(filePath) {
+    const directories = path.dirname(filePath).split(path.sep);
+    let currentDirectory = '';
 
-const ebookUrl = `https://a.digi4school.at/ebook/${config.ebookId}`
-
-function writeToFile(file, value) {
-    fs.writeFileSync(file, value)
+    directories.forEach(directory => {
+        currentDirectory = path.join(currentDirectory, directory);
+        if (!fs.existsSync(currentDirectory)) {
+            fs.mkdirSync(currentDirectory);
+        }
+    });
 }
 
 async function exit() {
@@ -54,12 +53,11 @@ async function gotoPage(name) {
         await exit()
     }
 
-    const promise = page.waitForNavigation()
+    const navigatePromise = page.waitForNavigation({waitUntil: 'networkidle0'})
     lastPageBtn[0].evaluate((element) => {
-        element.dispatchEvent(new MouseEvent('click', {}))
+        element.dispatchEvent(new MouseEvent('click'))
     })
-
-    await promise
+    await navigatePromise
 }
 
 async function findSVGUrl() {
@@ -80,7 +78,7 @@ async function findSVGUrl() {
 }
 
 const inst = await puppeteer.launch({
-    headless: false
+    headless: config.headless
 })
 
 let page
@@ -119,7 +117,7 @@ console.log(`Login as "${config.email}" successful.`)
 
 // Navigate to the ebook viewer URL
 await page.goto(ebookUrl, {
-    waitUntil: 'domcontentloaded'
+    waitUntil: 'networkidle0'
 })
 
 // Get the base url, without any additional tags
@@ -152,7 +150,9 @@ let svg = null
 for (let i = 1; i < numberOfPages; i++) {
     const svgUrl = await findSVGUrl()
 
-    const res = await svgPage.goto(svgUrl)
+    const res = await svgPage.goto(svgUrl, {
+        waitUntil: 'networkidle0'
+    })
 
     if (!res) {
         break
@@ -164,41 +164,37 @@ for (let i = 1; i < numberOfPages; i++) {
 
     console.log(`⁕ Getting page: ${i}`)
 
-    // TODO Ge the ACTUAL URL of the images and use the href parameter to place them in the correct spot in the folder hierarchy
-
+    const pageFile = `pages/${i}/page.svg`
     svg = (await res.text()).replaceAll('xlink:href', 'href')
+    createDirectories(pageFile)
+    fs.writeFileSync(pageFile, svg)
 
-    const images = [...svg.matchAll(/[0-9/.a-z]+\.(jpg|png)/g)]
+    // Get all images referenced in the SVG
+    const images = (await svgPage.$$eval('image', img => Array.from(img).map(img => img.href.baseVal)))
+        .map(href => [`pages/${i}/${href}`, `${baseUrl}${i}/${href}`])
 
-    if (images && images.length > 0) {
+    if (images.length === 0) {
+        console.log('  » No associated image files.')
+    } else {
         for (let j = 0; j < images.length; j++) {
-            // Extract the image URL
-            const image = (images[j])[0]
+            const imageUrl = (images[j])[1]
+            const imageFile = (images[j])[0]
 
-            const dir = 'pages/' + image.replaceAll(/[0-9]+\.(jpg|png)/g, '')
-
-            fs.mkdirSync(dir, {
-                recursive: true
-            })
-
-            let url = `${ebookUrl}/${image}`
-            const resp = await imagePage.goto(url)
+            const resp = await imagePage.goto(imageUrl, {waitUntil: 'networkidle0'})
             const buffer = await resp.buffer()
-            fs.writeFileSync('pages/' + image, buffer, 'base64')
+
+            // Create all directories along the way to our target
+            createDirectories(imageFile)
+
+            fs.writeFileSync(imageFile, buffer, 'base64')
+
+            console.log(`  » Grabbed ${j + 1}/${images.length} related image files.`)
         }
     }
-
-    if (images.length > 0) {
-        console.log(`  → ${images.length} associated image file` + (images.length === 1 ? '' : 's') + ' downloaded.')
-    } else {
-        console.log(`  → No associated image files.`)
-    }
-
-    writeToFile(`pages/${i}.svg`, svg)
 
     await gotoPage('next')
 }
 
-console.log(`Done: (${i - 1} pages converted)`)
+console.log(`Done: (${numberOfPages} pages converted)`)
 
 await inst.close()

@@ -1,11 +1,11 @@
 {
-  "name": "digi4school-downloader",
+  "name": "propofol",
   "type": "module",
   "version": "1.0.0",
-  "description": "A simple tool for downloading books from Digi4School",
+  "description": "A simple tool for doing some stuff of questionable legality",
   "main": "index.js",
   "keywords": [],
-  "author": "Piotr K. Wyrwas",
+  "author": "Piotr K. Wyrwas, Michael T. Steinmötzger",
   "license": "MIT",
   "dependencies": {
     "puppeteer": "^21.1.1"
