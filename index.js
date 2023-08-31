@@ -53,7 +53,7 @@ async function gotoPage(name) {
         await exit()
     }
 
-    const navigatePromise = page.waitForNavigation({waitUntil: 'networkidle0'})
+    const navigatePromise = page.waitForNavigation({waitUntil: 'networkidle0', timeout: 0})
     lastPageBtn[0].evaluate((element) => {
         element.dispatchEvent(new MouseEvent('click'))
     })
@@ -62,7 +62,7 @@ async function gotoPage(name) {
 
 async function findSVGUrl() {
     await page.waitForXPath('/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/object', {
-        timeout: 5000
+        timeout: 0
     })
 
     const svg = await page.$x('/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/object')
@@ -91,7 +91,7 @@ if (pages.length === 0) {
 }
 
 // Log into the service
-await page.goto('https://digi4school.at')
+await page.goto('https://digi4school.at', {waitUntil: 'networkidle0', timeout: 0})
 await page.type('#email', config.email)
 await page.type('#password', config.password)
 const button = await page.$x('/html/body/div[3]/div/div[1]/div/div[3]/div[2]/form/button')
@@ -117,8 +117,11 @@ console.log(`Login as "${config.email}" successful.`)
 
 // Navigate to the ebook viewer URL
 await page.goto(ebookUrl, {
-    waitUntil: 'networkidle0'
+    waitUntil: 'networkidle0',
+    timeout: 0
 })
+
+console.log('Probing book size ...')
 
 // Get the base url, without any additional tags
 const baseUrl = page.url()
@@ -141,17 +144,21 @@ console.log(`Probed number of pages: ${numberOfPages}`)
 
 await gotoPage('first')
 
+console.log('\n----- Beginning download process -----\n')
+
 // Preallocate two tabs for getting SVGs and image files
 const svgPage = await inst.newPage()
 const imagePage = await inst.newPage()
 
 let svg = null
+let imagesCount = 0
 
 for (let i = 1; i < numberOfPages; i++) {
     const svgUrl = await findSVGUrl()
 
     const res = await svgPage.goto(svgUrl, {
-        waitUntil: 'networkidle0'
+        waitUntil: 'networkidle0',
+        timeout: 0
     })
 
     if (!res) {
@@ -176,11 +183,12 @@ for (let i = 1; i < numberOfPages; i++) {
     if (images.length === 0) {
         console.log('  » No associated image files.')
     } else {
+        imagesCount += images.length
         for (let j = 0; j < images.length; j++) {
             const imageUrl = (images[j])[1]
             const imageFile = (images[j])[0]
 
-            const resp = await imagePage.goto(imageUrl, {waitUntil: 'networkidle0'})
+            const resp = await imagePage.goto(imageUrl, {waitUntil: 'networkidle0', timeout: 0})
             const buffer = await resp.buffer()
 
             // Create all directories along the way to our target
@@ -195,6 +203,6 @@ for (let i = 1; i < numberOfPages; i++) {
     await gotoPage('next')
 }
 
-console.log(`Done: (${numberOfPages} pages converted)`)
+console.log(`Done: (${numberOfPages} pages were converted; Downloaded additional ${imagesCount} images in total)`)
 
 await inst.close()
